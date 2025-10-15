@@ -49,7 +49,7 @@ const useId = () => {
 const DEBOUNCE_DELAY = 300;
 const VIRTUAL_LIST_HEIGHT = 300;
 const ITEM_HEIGHT = 32;
-const VISIBLE_ITEMS_COUNT = 8; // Show 8 items max in dropdown (within 6-10 range requirement)
+const VISIBLE_ITEMS_COUNT = 5; // Show 5 items max in dropdown with scrolling for remaining options
 const SEARCH_HEIGHT = 40; // Height for search input
 const ACTIONS_HEIGHT = 40; // Height for action buttons
 const DROPDOWN_MAX_HEIGHT = (VISIBLE_ITEMS_COUNT * ITEM_HEIGHT) + SEARCH_HEIGHT + ACTIONS_HEIGHT + 16; // 16px for padding
