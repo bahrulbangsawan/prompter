@@ -62,14 +62,14 @@ interface ParsedYaml {
   [key: string]: unknown;
 }
 
-const PROMPT_TEMPLATE = `You are an expert technical writer creating structured prompts for AI code generation.
+const getPromptTemplate = (hasTechStack: boolean) => `You are an expert technical writer creating structured prompts for AI code generation.
 Return a YAML document with the following structure:
 
 task:
   summary: <one sentence summary>
   goals:
     - <goal 1>
-    - <goal 2>
+    - <goal 2>${hasTechStack ? `
 tech_stack:
   frontend:
     - <frontend item>
@@ -78,10 +78,10 @@ tech_stack:
   database:
     - <database item>
   tools:
-    - <tool>
+    - <tool>` : ''}
 constraints:
   - <constraint>
-selector_path: <optional selector path>
+${hasTechStack ? 'selector_path: <optional selector path>' : ''}
 
 Important instructions:
 - Use concise, imperative language suitable for prompting an AI developer
@@ -91,18 +91,31 @@ Important instructions:
 - Keep each line concise and under 100 characters when possible
 - Return valid YAML without markdown code fences
 - Use "null" or omit fields that are not applicable instead of "n/a"
+${hasTechStack ? '' : '- Do NOT include a tech_stack section in the output since no tech stack was provided'}
 `;
 
 function buildUserMessage(params: EnhanceRequestBody) {
-  const stackSummary = Object.entries(params.techStack)
-    .map(([key, values]) => `${key}: ${values.join(", ") || "n/a"}`)
-    .join(" | ");
+  // Check if tech stack has any values
+  const hasTechStack = Object.values(params.techStack).some(
+    values => Array.isArray(values) && values.length > 0
+  );
+
+  const stackSummary = hasTechStack
+    ? Object.entries(params.techStack)
+        .filter(([_, values]) => Array.isArray(values) && values.length > 0)
+        .map(([key, values]) => `${key}: ${values.join(", ")}`)
+        .join(" | ")
+    : null;
 
   const selectorInfo = params.selectorPath
     ? `Target selector path: ${params.selectorPath}.`
     : "No specific selector was provided.";
 
-  return `Original explanation: ${params.userInput}\nDesired word limit: ${params.wordLimit}.\n${selectorInfo}\nCurrent project tech stack -> ${stackSummary}`;
+  const baseMessage = `Original explanation: ${params.userInput}\nDesired word limit: ${params.wordLimit}.\n${selectorInfo}`;
+
+  return hasTechStack
+    ? `${baseMessage}\nCurrent project tech stack -> ${stackSummary}`
+    : `${baseMessage}\nNo specific tech stack defined.`;
 }
 
 async function requestWithRetry(request: GrokRequest, attempts = 3, delay = 750) {
@@ -183,6 +196,11 @@ export async function POST(request: NextRequest) {
       userInput: finalUserInput
     };
 
+    // Check if tech stack has any values for dynamic prompt template
+    const hasTechStack = Object.values(processedBody.techStack).some(
+      values => Array.isArray(values) && values.length > 0
+    );
+
     const grokRequest: GrokRequest = {
       model: "grok-code-fast-1",
       temperature: 0,
@@ -191,7 +209,7 @@ export async function POST(request: NextRequest) {
       messages: [
         {
           role: "system",
-          content: PROMPT_TEMPLATE,
+          content: getPromptTemplate(hasTechStack),
         },
         {
           role: "user",
@@ -249,6 +267,11 @@ export async function POST(request: NextRequest) {
             delete parsed.tech_stack?.[key];
           }
         });
+
+        // Remove entire tech_stack key if no subfields remain
+        if (Object.keys(parsed.tech_stack).length === 0) {
+          delete parsed.tech_stack;
+        }
       }
 
       // Remove selector_path if null or empty
