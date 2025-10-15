@@ -6,11 +6,11 @@ import { persist } from "zustand/middleware";
 import type { TechStack } from "@/types";
 
 export const DEFAULT_TECH_STACK: TechStack = {
-  frontend: ["Next.js", "React", "TypeScript"],
-  backend: ["Node.js", "Express.js"],
-  database: ["PostgreSQL", "Prisma"],
-  tools: ["Tailwind CSS", "shadcn/ui", "Vite", "ESLint", "Prettier"],
-  uiComponents: ["shadcn/ui", "Radix UI", "Headless UI"],
+  frontend: [],
+  backend: [],
+  database: [],
+  tools: [],
+  uiComponents: [],
 };
 
 interface SetupStore {
