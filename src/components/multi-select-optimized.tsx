@@ -46,13 +46,14 @@ const useId = () => {
 };
 
 // Performance optimizations
-const DEBOUNCE_DELAY = 300;
-const VIRTUAL_LIST_HEIGHT = 300;
+const DEBOUNCE_DELAY = 150; // Reduced for better responsiveness
+const VIRTUAL_LIST_HEIGHT = 240; // Optimized height for better UX
 const ITEM_HEIGHT = 32;
 const VISIBLE_ITEMS_COUNT = 5; // Show 5 items max in dropdown with scrolling for remaining options
 const SEARCH_HEIGHT = 40; // Height for search input
 const ACTIONS_HEIGHT = 40; // Height for action buttons
 const DROPDOWN_MAX_HEIGHT = (VISIBLE_ITEMS_COUNT * ITEM_HEIGHT) + SEARCH_HEIGHT + ACTIONS_HEIGHT + 16; // 16px for padding
+const VIRTUAL_SCROLLING_THRESHOLD = 20; // Enable virtual scrolling for lists with 20+ items
 
 // Debounce hook
 function useDebounce<T>(value: T, delay: number): T {
@@ -106,27 +107,43 @@ const VirtualList = React.memo(({
 		setEndIndex(newEndIndex);
 	}, [itemHeight, visibleCount, items.length]);
 
+	const handleKeyDown = React.useCallback((e: React.KeyboardEvent, itemValue: string) => {
+		if (e.key === "Enter" || e.key === " ") {
+			e.preventDefault();
+			onToggle(itemValue);
+		}
+	}, [onToggle]);
+
 	return (
 		<div
 			ref={containerRef}
-			className="overflow-y-auto"
+			className="overflow-y-auto focus:outline-none"
 			style={{ height: containerHeight }}
 			onScroll={handleScroll}
+			role="listbox"
+			aria-label="Available options"
 		>
 			<div style={{ height: items.length * itemHeight, position: 'relative' }}>
 				<div style={{ transform: `translateY(${startIndex * itemHeight}px)` }}>
-					{visibleItems.map((item) => {
+					{visibleItems.map((item, index) => {
 						const isSelected = selectedValues.includes(item.value);
+						const globalIndex = startIndex + index;
 						return (
 							<div
 								key={item.value}
 								style={{ height: itemHeight }}
 								className={cn(
-									"flex items-center px-2 py-1 cursor-pointer hover:bg-accent rounded-sm",
+									"flex items-center px-2 py-1 cursor-pointer hover:bg-accent rounded-sm outline-none",
+									"focus:bg-accent focus:ring-1 focus:ring-ring",
 									item.disabled && "opacity-50 cursor-not-allowed",
 									isSelected && "bg-accent"
 								)}
 								onClick={() => !item.disabled && onToggle(item.value)}
+								onKeyDown={(e) => !item.disabled && handleKeyDown(e, item.value)}
+								role="option"
+								aria-selected={isSelected}
+								aria-disabled={item.disabled || false}
+								tabIndex={item.disabled ? -1 : 0}
 							>
 								<div className="mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary">
 									{isSelected && (
@@ -215,16 +232,37 @@ export const OptimizedMultiSelect = React.forwardRef<
 		const listboxId = `${multiSelectId}-listbox`;
 		const triggerDescriptionId = `${multiSelectId}-description`;
 
-		// Filter options based on search
+		// Filter options based on search with improved fuzzy matching
 		const filteredOptions = React.useMemo(() => {
 			if (!searchable || !debouncedSearchValue) return options;
 
-			return options.filter((option) =>
-				option.label
-					.toLowerCase()
-					.includes(debouncedSearchValue.toLowerCase()) ||
-				option.value.toLowerCase().includes(debouncedSearchValue.toLowerCase())
-			);
+			const searchLower = debouncedSearchValue.toLowerCase();
+
+			return options.filter((option) => {
+				const labelLower = option.label.toLowerCase();
+				const valueLower = option.value.toLowerCase();
+
+				// Exact match gets highest priority
+				if (labelLower === searchLower || valueLower === searchLower) {
+					return true;
+				}
+
+				// Starts with match
+				if (labelLower.startsWith(searchLower) || valueLower.startsWith(searchLower)) {
+					return true;
+				}
+
+				// Contains match
+				if (labelLower.includes(searchLower) || valueLower.includes(searchLower)) {
+					return true;
+				}
+
+				// Fuzzy matching for better UX
+				const searchWords = searchLower.split(' ');
+				return searchWords.every(word =>
+					labelLower.includes(word) || valueLower.includes(word)
+				);
+			});
 		}, [options, debouncedSearchValue, searchable]);
 
 		// Memoized handlers
@@ -379,11 +417,13 @@ export const OptimizedMultiSelect = React.forwardRef<
 					aria-multiselectable="true"
 					className={cn(
 						"w-auto p-0 overflow-hidden",
-						// Use the calculated max-height for consistent dropdown behavior
-						virtualScrolling ? "max-h-96" : `max-h-[${DROPDOWN_MAX_HEIGHT}px]`
+						// Use consistent max-height for all dropdowns
+						"max-h-[256px]"
 					)}
 					align="start"
 					onEscapeKeyDown={() => setIsPopoverOpen(false)}
+					side="bottom"
+					sideOffset={4}
 				>
 					<Command>
 						{searchable && (
@@ -396,20 +436,20 @@ export const OptimizedMultiSelect = React.forwardRef<
 						)}
 						<CommandList className={cn(
 							"p-1",
-							// Apply max-height and scrolling to the command list - shows 8 items with smooth scrolling
-							!virtualScrolling && `max-h-[${(VISIBLE_ITEMS_COUNT * ITEM_HEIGHT) + 16}px] overflow-y-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent`
+							// Apply consistent scrolling for all lists
+							"max-h-[160px] overflow-y-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
 						)}>
 							<CommandEmpty>
 								{emptyIndicator || "No results found."}
 							</CommandEmpty>
 							{filteredOptions.length === 0 ? (
 								<CommandEmpty>No options available.</CommandEmpty>
-							) : virtualScrolling && filteredOptions.length > 50 ? (
+							) : virtualScrolling && filteredOptions.length > VIRTUAL_SCROLLING_THRESHOLD ? (
 								<VirtualList
 									items={filteredOptions}
 									selectedValues={selectedValues}
 									onToggle={toggleOption}
-									height={virtualHeight}
+									height={160}
 								/>
 							) : (
 								<CommandGroup>
@@ -421,7 +461,8 @@ export const OptimizedMultiSelect = React.forwardRef<
 												onSelect={() => toggleOption(option.value)}
 												disabled={option.disabled}
 												className={cn(
-													"cursor-pointer",
+													"cursor-pointer outline-none",
+													"focus:bg-accent focus:ring-1 focus:ring-ring",
 													option.disabled && "opacity-50 cursor-not-allowed"
 												)}
 											>

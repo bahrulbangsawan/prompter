@@ -358,6 +358,8 @@ function TechStackField({ items, category, onChange, error, disabled }: TechStac
         disabled={disabled}
         maxCount={5}
         searchable={true}
+        virtualScrolling={category.options.length > 20}
+        virtualHeight={160}
         className="w-full"
       />
       {error && <p className="text-sm text-destructive">{error}</p>}
